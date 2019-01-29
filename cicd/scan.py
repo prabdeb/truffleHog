@@ -13,9 +13,10 @@ import requests
 
 #################################################################################################
 class Scan:
-    def __init__(self, scmUrl, token, project, repository, exclude, outputFile, verbose):
+    def __init__(self, scmUrl, token, userName, project, repository, exclude, outputFile, verbose):
         self.scmUrl = scmUrl
         self.token = token
+        self.userName = userName
         self.project = project
         self.repository= repository
         self.outputFile= outputFile
@@ -29,13 +30,13 @@ class Scan:
         else:
             logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', level=logging.INFO)
     def _getRepositories(self):
-        bitbucket = Bitbucket(self.token, self.scmUrl, self.project, self.repository)
+        bitbucket = Bitbucket(self.scmUrl, self.token, self.userName, self.project, self.repository)
         return (bitbucket._getRepositories())
     def _executeTruffleHog(self, repositories):
         truffleHogOutputFiles = {}
         for repositoryName in repositories:
             repository = repositories[repositoryName]
-            logging.info("Executing truffleHog for " + repository + " ...")
+            logging.info("Executing truffleHog for " + repositoryName + " ...")
             if not os.path.exists("truffleHog"):
                 os.makedirs("truffleHog")
             os.system("truffleHog --regex --json " + repository + " > truffleHog/" + repositoryName + ".json")
@@ -159,16 +160,20 @@ class Scan:
 
 #################################################################################################
 class Bitbucket:
-    def __init__(self, token, scmUrl, project, repository):
-        self.token = token
+    def __init__(self, scmUrl, token, userName, project, repository):
         self.scmUrl = scmUrl
+        self.token = token
+        self.userName = userName
         self.apiUrl = scmUrl + "/rest/api/latest/"
         self.project = project
         self.repository = repository
     def _getRepositories(self):
         repositories = {}
+        urlWithoutHttps = self.scmUrl
+        if urlWithoutHttps.startswith("https://"):
+            urlWithoutHttps = urlWithoutHttps.replace("https://", "")
         if self.repository != None:
-            repository = self.scmUrl + "/scm/" + self.project + "/" + self.repository + ".git"
+            repository = "https://"+self.userName+":"+self.token+"@"+urlWithoutHttps+"/scm/"+self.project+"/"+self.repository+".git"
             repositories[self.repository] = repository
             return repositories
         logging.debug("Getting all repositories for - " + self.scmUrl + " for project " + self.project)
@@ -176,13 +181,13 @@ class Bitbucket:
         response = requests.get(self.apiUrl + "projects/" + self.project + "/repos?limit=500", headers=header)
         rawRepositoryData = response.json()
         for entry in rawRepositoryData["values"]:
-            repositories[entry["slug"]] = self.scmUrl + "/scm/" + self.project + "/" + entry["slug"] + ".git"
+            repositories[entry["slug"]] = "https://"+self.userName+":"+self.token+"@"+urlWithoutHttps+"/scm/"+self.project+"/"+entry["slug"]+".git"
         return repositories
 
 #################################################################################################
 def main(args):
-    scmUrl, token, project, repository, exclude, outputFile, verbose = get_args()
-    scan = Scan(scmUrl, token, project, repository, exclude, outputFile, verbose)
+    scmUrl, token, userName, project, repository, exclude, outputFile, verbose = get_args()
+    scan = Scan(scmUrl, token, userName, project, repository, exclude, outputFile, verbose)
     scan.scan()
 
 #################################################################################################
@@ -191,22 +196,24 @@ def get_args():
     parser = argparse.ArgumentParser(description='scan.py: Execute and parse report of truffleHog')
     parser.add_argument('-s', '--scm', type=str, help='SCM parent URL for scaning', required=True)
     parser.add_argument('-t', '--token', type=str, help='SCM OAuth Token', required=True)
+    parser.add_argument('-u', '--userName', type=str, help='SCM User Name', required=True)
     parser.add_argument('-p', '--project', type=str, help='Project/Owner Name', required=True)
     parser.add_argument('-r', '--repository', type=str, help='Repository Name, if not mentioned all repositories will be scanned', required=False)
     parser.add_argument('-e', '--exclude', type=str, help='Excluded files patterns coma (,) separated', required=False)
-    parser.add_argument('-o', '--output', type=argparse.FileType('w', encoding='UTF-8'), help='Store result to mentioned report file (Microsoft Excel)', required=False)
+    parser.add_argument('-o', '--output', type=argparse.FileType('w'), help='Store result to mentioned report file (Microsoft Excel)', required=False)
     parser.add_argument('-v', '--verbose', help='Verbose output for debug', required=False, action='store_true')
     parser.set_defaults(summary=True)
     parser.set_defaults(verbose=False)
     args = parser.parse_args()
     scmUrl = args.scm
     token = args.token
+    userName = args.userName
     project = args.project
     repository = args.repository
     exclude = args.exclude
     outputFile = args.output
     verbose = args.verbose
-    return scmUrl,token,project,repository,exclude,outputFile,verbose
+    return scmUrl,token,userName,project,repository,exclude,outputFile,verbose
 
 #################################################################################################
 #################################################################################################
