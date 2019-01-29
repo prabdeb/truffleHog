@@ -34,9 +34,10 @@ class Scan:
         return (bitbucket._getRepositories())
     def _executeTruffleHog(self, repositories):
         truffleHogOutputFiles = {}
-        for repositoryName in repositories:
+        logging.info("Total repositories found - " + str(len(repositories)))
+        for index, repositoryName in enumerate(repositories):
             repository = repositories[repositoryName]
-            logging.info("Executing truffleHog for " + repositoryName + " ...")
+            logging.info("["+str(index)+"]" + " Executing truffleHog for " + repositoryName + " ...")
             if not os.path.exists("truffleHog"):
                 os.makedirs("truffleHog")
             os.system("truffleHog --regex --json " + repository + " > truffleHog/" + repositoryName + ".json")
