@@ -10,10 +10,11 @@ import xlsxwriter
 import datetime
 import os
 import requests
+import shutil
 
 #################################################################################################
 class Scan:
-    def __init__(self, scmUrl, token, userName, project, repository, exclude, outputFile, verbose):
+    def __init__(self, scmUrl, token, userName, project, repository, exclude, excludeRepositories, outputFile, verbose):
         self.scmUrl = scmUrl
         self.token = token
         self.userName = userName
@@ -25,6 +26,10 @@ class Scan:
             self.exclude = exclude.split(",")
         else:
             self.exclude = []
+        if excludeRepositories != None:
+            self.excludeRepositories = excludeRepositories.split(",")
+        else:
+            self.excludeRepositories = []
         if self.verbose:
             logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', level=logging.DEBUG)
         else:
@@ -33,13 +38,17 @@ class Scan:
         bitbucket = Bitbucket(self.scmUrl, self.token, self.userName, self.project, self.repository)
         return (bitbucket._getRepositories())
     def _executeTruffleHog(self, repositories):
+        if os.path.exists("truffleHog"):
+            shutil.rmtree("truffleHog", ignore_errors=True)
+        os.makedirs("truffleHog")
         truffleHogOutputFiles = {}
         logging.info("Total repositories found - " + str(len(repositories)))
         for index, repositoryName in enumerate(repositories):
             repository = repositories[repositoryName]
+            if repositoryName in self.excludeRepositories:
+                logging.info("["+str(index)+"]" + " Skipping execution for " + repositoryName)
+                continue
             logging.info("["+str(index)+"]" + " Executing truffleHog for " + repositoryName + " ...")
-            if not os.path.exists("truffleHog"):
-                os.makedirs("truffleHog")
             os.system("truffleHog --regex --json " + repository + " > truffleHog/" + repositoryName + ".json")
             truffleHogOutputFiles[repositoryName] = "truffleHog/" + repositoryName + ".json"
         return truffleHogOutputFiles
@@ -187,8 +196,8 @@ class Bitbucket:
 
 #################################################################################################
 def main(args):
-    scmUrl, token, userName, project, repository, exclude, outputFile, verbose = get_args()
-    scan = Scan(scmUrl, token, userName, project, repository, exclude, outputFile, verbose)
+    scmUrl, token, userName, project, repository, exclude, excludeRepositories, outputFile, verbose = get_args()
+    scan = Scan(scmUrl, token, userName, project, repository, exclude, excludeRepositories, outputFile, verbose)
     scan.scan()
 
 #################################################################################################
@@ -201,6 +210,7 @@ def get_args():
     parser.add_argument('-p', '--project', type=str, help='Project/Owner Name', required=True)
     parser.add_argument('-r', '--repository', type=str, help='Repository Name, if not mentioned all repositories will be scanned', required=False)
     parser.add_argument('-e', '--exclude', type=str, help='Excluded files patterns coma (,) separated', required=False)
+    parser.add_argument('-er', '--excludeRepositories', type=str, help='Excluded repositories coma (,) separated', required=False)
     parser.add_argument('-o', '--output', type=argparse.FileType('w'), help='Store result to mentioned report file (Microsoft Excel)', required=False)
     parser.add_argument('-v', '--verbose', help='Verbose output for debug', required=False, action='store_true')
     parser.set_defaults(summary=True)
@@ -212,9 +222,10 @@ def get_args():
     project = args.project
     repository = args.repository
     exclude = args.exclude
+    excludeRepositories = args.excludeRepositories
     outputFile = args.output
     verbose = args.verbose
-    return scmUrl,token,userName,project,repository,exclude,outputFile,verbose
+    return scmUrl,token,userName,project,repository,exclude,excludeRepositories,outputFile,verbose
 
 #################################################################################################
 #################################################################################################
