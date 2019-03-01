@@ -14,7 +14,7 @@ import shutil
 
 #################################################################################################
 class Scan:
-    def __init__(self, scmUrl, token, userName, project, repository, exclude, excludeRepositories, outputFile, pullRequest, inputCommitDepth, entropy, verbose, exitWithError):
+    def __init__(self, scmUrl, token, userName, project, repository, exclude, excludeRepositories, outputFile, pullRequest, inputCommitDepth, entropy, rules, verbose, exitWithError):
         self.scmUrl = scmUrl
         self.token = token
         self.userName = userName
@@ -24,6 +24,7 @@ class Scan:
         self.pullRequest = pullRequest
         self.inputCommitDepth = inputCommitDepth
         self.entropy = entropy
+        self.rules = rules
         self.verbose = verbose
         self.exitWithError = exitWithError
         if exclude != None:
@@ -54,6 +55,9 @@ class Scan:
             shutil.rmtree("truffleHog", ignore_errors=True)
         os.makedirs("truffleHog")
         truffleHogOutputFiles = {}
+        truffleHogExtraOptions = ""
+        if self.rules != None:
+            truffleHogExtraOptions = "--rules " + self.rules
         logging.info("Total repositories found - " + str(len(repositories)))
         for index, repositoryName in enumerate(repositories):
             repository = repositories[repositoryName]
@@ -64,10 +68,10 @@ class Scan:
                 logging.info("Setting Commit Depth to - " + commitDepth)
                 logging.info("Setting branch to - refs/pull-requests/" + self.pullRequest + "/merge")
                 logging.info("["+str(index+1)+"]" + " Executing truffleHog for " + repositoryName + " ...")
-                os.system("/usr/local/bin/trufflehog --regex --json --branch=refs/pull-requests/" + self.pullRequest + "/merge --max_depth=" + commitDepth + " --entropy=" + self.entropy + " " + repository + " > truffleHog/" + repositoryName + ".json")
+                os.system("/usr/local/bin/trufflehog "+ truffleHogExtraOptions +" --regex --json --branch=refs/pull-requests/" + self.pullRequest + "/merge --max_depth=" + commitDepth + " --entropy=" + self.entropy + " " + repository + " > truffleHog/" + repositoryName + ".json")
             else:
                 logging.info("["+str(index+1)+"]" + " Executing truffleHog for " + repositoryName + " ...")
-                os.system("/usr/local/bin/trufflehog --regex --json --entropy=" + self.entropy + " " + repository + " > truffleHog/" + repositoryName + ".json")
+                os.system("/usr/local/bin/trufflehog "+ truffleHogExtraOptions +" --regex --json --entropy=" + self.entropy + " " + repository + " > truffleHog/" + repositoryName + ".json")
             truffleHogOutputFiles[repositoryName] = "truffleHog/" + repositoryName + ".json"
         return truffleHogOutputFiles
     def _readInputFile(self, inputJson):
@@ -243,6 +247,9 @@ class Bitbucket:
         logging.debug("Getting all repositories for - " + self.scmUrl + " for project " + self.project)
         header = {'Authorization': 'Bearer ' + self.token}
         response = requests.get(self.apiUrl + "projects/" + self.project + "/repos?limit=500", headers=header)
+        if response.status_code != 200:
+            print("Unable to get all repositories from Bitbucket, re-check BitBucket access token (it must have at-least read access)")
+            sys.exit(1)
         rawRepositoryData = response.json()
         for entry in rawRepositoryData["values"]:
             repositories[entry["slug"]] = "https://"+self.userName+":"+self.token+"@"+urlWithoutHttps+"/scm/"+self.project+"/"+entry["slug"]+".git"
@@ -255,8 +262,8 @@ class Bitbucket:
 
 #################################################################################################
 def main(args):
-    scmUrl, token, userName, project, repository, exclude, excludeRepositories, outputFile, pullRequest, inputCommitDepth, entropy, verbose, exitWithError = get_args()
-    scan = Scan(scmUrl, token, userName, project, repository, exclude, excludeRepositories, outputFile, pullRequest, inputCommitDepth, entropy, verbose, exitWithError)
+    scmUrl, token, userName, project, repository, exclude, excludeRepositories, outputFile, pullRequest, inputCommitDepth, entropy, rules, verbose, exitWithError = get_args()
+    scan = Scan(scmUrl, token, userName, project, repository, exclude, excludeRepositories, outputFile, pullRequest, inputCommitDepth, entropy, rules, verbose, exitWithError)
     scan.scan()
 
 #################################################################################################
@@ -274,6 +281,7 @@ def get_args():
     parser.add_argument('-pr', '--pullRequest', type=str, help='Enable diff based scan for Pull Request ENV: CI_PULL_REQUEST', required=False)
     parser.add_argument('-cd', '--commitDepth', type=str, help='Enable diff based scan for commit depth ENV: DRONE_BUILD_EVENT', required=False)
     parser.add_argument('-en', '--entropy',type=str, help='Enable (default) or disable entropy ENV: TRUFFLEHOG_ENTROPY', required=False)
+    parser.add_argument('-ru', '--rules',type=str, help='Mention custom rules file ENV: TRUFFLEHOG_RULES', required=False)
     parser.add_argument('-v', '--verbose', help='Verbose output for debug', required=False, action='store_true')
     parser.add_argument('-ex', '--exit', help='Exit with error if any secrets found ENV: RAISE_ERROR', required=False, action='store_true')
     parser.set_defaults(entropy="True")
@@ -292,6 +300,7 @@ def get_args():
     pullRequest = args.pullRequest
     inputCommitDepth = args.commitDepth
     entropy = args.entropy
+    rules = args.rules
     verbose = args.verbose
     exitWithError = args.exit
 
@@ -304,6 +313,8 @@ def get_args():
         excludeRepositories = os.getenv('EXCLUDED_REPOSITORIES')
     if entropy == None:
         entropy = os.getenv('TRUFFLEHOG_ENTROPY')
+    if rules == None:
+        rules = os.getenv('TRUFFLEHOG_RULES')
     if token == None:
         token = os.getenv('BITBUCKET_LOGIN')
     if userName == None:
@@ -334,7 +345,7 @@ def get_args():
         print("Missing mandatory parameter: --project")
         sys.exit(1)
 
-    return scmUrl,token,userName,project,repository,exclude,excludeRepositories,outputFile,pullRequest,inputCommitDepth,entropy,verbose,exitWithError
+    return scmUrl,token,userName,project,repository,exclude,excludeRepositories,outputFile,pullRequest,inputCommitDepth,entropy,rules,verbose,exitWithError
 
 #################################################################################################
 #################################################################################################
