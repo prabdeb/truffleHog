@@ -105,6 +105,7 @@ class Scan:
     def _print(self, repositoryName, truffleHogResultFiltered):
         logging.debug("Printing result")
         truffleHogExceldata = list()
+        truffleHogExcelSummarydata = list()
         reasonsFound = []
         totalFiles = 0
         for path in truffleHogResultFiltered:
@@ -122,6 +123,7 @@ class Scan:
                     logging.debug("      branch - " + secretDetails["branch"])
                     truffleHogExceldata.append([self.project, repositoryName, path, reason, secret, secretDetails["commitCount"], secretDetails["commitHash"], secretDetails["branch"]])
         if totalFiles > 0:
+            truffleHogExcelSummarydata.append([self.project, repositoryName, totalFiles, ", ".join(reasonsFound)])
             print("======================================================")
             print("Total files having secret information - ", str(totalFiles))
             print("Secret types:", ", ".join(reasonsFound))
@@ -132,31 +134,40 @@ class Scan:
             print("======================================================")
             print("[PASSED] There are no files having secrets")
             print("======================================================")
-        return truffleHogExceldata
+        return truffleHogExceldata, truffleHogExcelSummarydata
     def _excelReportInitiator(self):
         workbook = xlsxwriter.Workbook(self.outputFile.name, {'strings_to_formulas': False, 'strings_to_urls': False})
-        worksheetAllDefect = workbook.add_worksheet(self.project)
+        worksheetSummary = workbook.add_worksheet("Summary")
+        worksheetDetails = workbook.add_worksheet("Details")
         logging.debug("Writting report to - " + self.outputFile.name )
         formatText = workbook.add_format()
         formatText.set_text_wrap()
         formatText.set_align('top')
         merge_format = workbook.add_format({'font_size': 15, 'bold': 1, 'border': 1, 'valign': 'vcenter', 'fg_color': 'silver'})
         todaysDate = datetime.date.today().strftime("%B %d, %Y")
-        worksheetAllDefect.set_tab_color('#339966')
-        worksheetAllDefect.set_column('A:A', 8, formatText)
-        worksheetAllDefect.set_column('B:B', 15, formatText)
-        worksheetAllDefect.set_column('C:C', 50, formatText)
-        worksheetAllDefect.set_column('D:D', 20, formatText)
-        worksheetAllDefect.set_column('E:E', 20, formatText)
-        worksheetAllDefect.set_column('F:F', 12, formatText)
-        worksheetAllDefect.set_column('G:G', 40, formatText)
-        worksheetAllDefect.set_column('H:H', 20, formatText)
-        worksheetAllDefect.merge_range('A1:H1', "Secrets found in below files    Report Generated: "+todaysDate, merge_format)
-        return workbook, worksheetAllDefect
+        
+        worksheetSummary.set_tab_color('#339966')
+        worksheetSummary.set_column('A:A', 15, formatText)
+        worksheetSummary.set_column('B:B', 25, formatText)
+        worksheetSummary.set_column('C:C', 10, formatText)
+        worksheetSummary.set_column('D:D', 60, formatText)
+        worksheetSummary.merge_range('A1:D1', "Secrets found in below files    Report Generated: "+todaysDate, merge_format)
+        
+        worksheetDetails.set_tab_color('#339966')
+        worksheetDetails.set_column('A:A', 8, formatText)
+        worksheetDetails.set_column('B:B', 15, formatText)
+        worksheetDetails.set_column('C:C', 50, formatText)
+        worksheetDetails.set_column('D:D', 20, formatText)
+        worksheetDetails.set_column('E:E', 20, formatText)
+        worksheetDetails.set_column('F:F', 12, formatText)
+        worksheetDetails.set_column('G:G', 40, formatText)
+        worksheetDetails.set_column('H:H', 20, formatText)
+        worksheetDetails.merge_range('A1:H1', "Secrets found in below files    Report Generated: "+todaysDate, merge_format)
+        return workbook, worksheetSummary, worksheetDetails
 
-    def _excelReport(self, workbook, worksheetAllDefect, truffleHogExceldata):
+    def _excelReport(self, workbook, worksheetDetails, truffleHogExceldata, worksheetSummary, truffleHogExcelSummarydata):
         dataRangeDefect = "A2:H" + str(len(truffleHogExceldata) + 2)
-        worksheetAllDefect.add_table(
+        worksheetDetails.add_table(
             dataRangeDefect, 
             {'data': truffleHogExceldata,
 				'columns': [
@@ -171,12 +182,25 @@ class Scan:
                 ]
             }
         )
+
+        dataRangeSummary = "A2:D" + str(len(truffleHogExcelSummarydata) + 2)
+        worksheetSummary.add_table(
+            dataRangeSummary, 
+            {'data': truffleHogExcelSummarydata,
+				'columns': [
+                    {'header': 'Project'},
+                    {'header': 'Repository'},
+                    {'header': 'File Count'},
+                    {'header': 'Secret Type'},
+                ]
+            }
+        )
         return workbook
 
     def scan(self):
         truffleHogExceldataSets = []
         if self.outputFile != None:
-            workbook, worksheetAllDefect = self._excelReportInitiator()
+            workbook, worksheetSummary, worksheetDetails = self._excelReportInitiator()
         repositories = self._getRepositories()
         commitDepth = self._getPRCommitDepth()
         truffleHogOutPutFiles = self._executeTruffleHog(repositories, commitDepth)
@@ -184,10 +208,10 @@ class Scan:
             truffleHogOutPutFile = truffleHogOutPutFiles[repositoryName]
             truffleHogResults = self._readInputFile(truffleHogOutPutFile)
             truffleHogResultFiltered = self._parseResult(truffleHogResults)
-            truffleHogExceldata = self._print(repositoryName, truffleHogResultFiltered)
+            truffleHogExceldata, truffleHogExcelSummarydata = self._print(repositoryName, truffleHogResultFiltered)
             truffleHogExceldataSets = truffleHogExceldataSets + truffleHogExceldata
         if self.outputFile != None:
-            workbook = self._excelReport(workbook, worksheetAllDefect, truffleHogExceldataSets)
+            workbook = self._excelReport(workbook, worksheetDetails, truffleHogExceldataSets, worksheetSummary, truffleHogExcelSummarydata)
             workbook.close()
             logging.info("Report saved to - " + self.outputFile.name )
         if len(truffleHogExceldataSets) > 0:
