@@ -203,6 +203,7 @@ class Scan:
 
     def scan(self):
         truffleHogExceldataSets = []
+        truffleHogExcelSummarydataSets = []
         if self.outputFile != None:
             workbook, worksheetSummary, worksheetDetails = self._excelReportInitiator()
         repositories = self._getRepositories()
@@ -214,8 +215,9 @@ class Scan:
             truffleHogResultFiltered = self._parseResult(truffleHogResults)
             truffleHogExceldata, truffleHogExcelSummarydata = self._print(repositoryName, truffleHogResultFiltered)
             truffleHogExceldataSets = truffleHogExceldataSets + truffleHogExceldata
+            truffleHogExcelSummarydataSets = truffleHogExcelSummarydataSets + truffleHogExcelSummarydata
         if self.outputFile != None:
-            workbook = self._excelReport(workbook, worksheetDetails, truffleHogExceldataSets, worksheetSummary, truffleHogExcelSummarydata)
+            workbook = self._excelReport(workbook, worksheetDetails, truffleHogExceldataSets, worksheetSummary, truffleHogExcelSummarydataSets)
             workbook.close()
             logging.info("Report saved to - " + self.outputFile.name )
         if len(truffleHogExceldataSets) > 0:
